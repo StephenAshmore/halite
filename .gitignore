@@ -1,0 +1,4 @@
+*.hlt
+*.o
+log.txt
+*.log
