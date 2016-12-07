@@ -1,2 +1,0 @@
-LOG FILE:
-CLUSTER ID: 1

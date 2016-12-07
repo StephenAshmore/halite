@@ -16,6 +16,12 @@
 
 using namespace std;
 
+ofstream out;
+
+int threshold = 20;
+const float STILL_MODIFIER = 7.5;
+
+
 // cluster struct:
 struct cluster {
   unsigned int id;
@@ -33,9 +39,8 @@ int wrap(int l, int size);
 void resetClusters(unsigned int** clustering, unsigned int width, unsigned int height);
 
 int main() {
-  ofstream out;
   // Initialization:
-  out.open("log_log.txt", std::ios_base::out);
+  out.open("log.txt", std::ios_base::out);
   srand(time(NULL));
   out << "LOG FILE:" << endl;
 
@@ -56,8 +61,7 @@ int main() {
   // }
 
   std::set<hlt::Move> final_moves;
-  std::string tempStr = "map height: ";
-  tempStr += map.height + " width: " + map.width;
+
   // log(tempStr.c_str());
   //Clustering map:
   unsigned int** clustering = new unsigned int*[map.height];
@@ -76,19 +80,21 @@ int main() {
   location neighbor_above;
   location neighbor_below;
 
-  unsigned int clusterID = 0;
   while(true) {
+    std::queue<location> empty;
+    std::swap(m_queue,empty);
+    unsigned int clusterID = 0;
     resetClusters(clustering, map.width, map.height);
     final_moves.clear();
 
     getFrame(map);
 
-    // All pairs shortest paths:
-
     // Find clusters:
     // clustering(map, clusters);
     bool done = false;
     bool stop = false;
+    int count = 0;
+    unsigned short initY = 0; unsigned short initX = 0;
     while ( !done ) {
       stop = false;
       // find un-clustered cell:
@@ -97,14 +103,15 @@ int main() {
         for ( unsigned short x = 0; x < map.width; x++ ) {
           if ( clustering[y][x] == 0 ) {
             clusterID++;
-            out << "CLUSTER ID: " << clusterID << endl;
+            // out << "CLUSTER ID: " << clusterID << endl;
             // add this one to queue.
             location newLoc;
             newLoc.x = x;
             newLoc.y = y;
+            initX = x; initY = y;
             m_queue.push(newLoc);
-            clustering[wrap(y, map.height)][wrap(x, map.width)] = clusterID;
-
+            clustering[y][x] = clusterID;
+            count++;
             stop = true;
             break;
           }
@@ -120,6 +127,8 @@ int main() {
       location& cur = m_queue.front();
       hlt::Site& site = map.getSite({cur.x,cur.y});
       unsigned int curStr = site.strength;
+
+      // out << "Current Strength is: " << curStr << endl;
 
       // add to clusters:
       cluster newCluster;
@@ -141,9 +150,10 @@ int main() {
         location& cur = m_queue.front();
 
         hlt::Site& site = map.getSite({cur.x, cur.y});
-        if ( clustering[wrap(cur.y, map.height)][wrap(cur.x, map.width)] == 0 && site.strength == curStr + 1 ) {
-          out << "Adding " << cur.x << ", " << cur.y << " to the cluster." << endl;
-          // check if it is +- 1 of curStr.
+        if ( clustering[cur.y][cur.x] == 0 &&
+          (site.strength <= curStr + threshold && site.strength >= curStr - threshold ) )
+        {
+          // out << "Adding " << cur.x << ", " << cur.y << " to the cluster." << endl;
           // if so, add it to the clustering matrix
           // and add neighbors to queue:
           clustering[cur.y][cur.x] = clusterID;
@@ -153,26 +163,24 @@ int main() {
           neighbor_below.x = wrap(cur.x, map.width);       neighbor_below.y = wrap(cur.y + 1, map.height);
           m_queue.push(neighbor_right); m_queue.push(neighbor_left);
           m_queue.push(neighbor_above); m_queue.push(neighbor_below);
+          count++;
         }
         m_queue.pop();
       }
     }
 
-    // print out cluster map:
-    out << "CLUSTERING MAP:" << endl; out.flush();
-    for ( unsigned short y = 0; y < map.height && !stop; y++ ) {
-      for ( unsigned short x = 0; x < map.width; x++ ) {
-        out << clustering[y][x] << " "; out.flush();
-      }
-      out << endl;
-    }
-
-
 
     for(unsigned short a = 0; a < map.height; a++) {
       for(unsigned short b = 0; b < map.width; b++) {
         hlt::Site& site = map.getSite({ b, a });
-
+        if ( site.owner == myID ) {
+          if ( !moved && site.strength < site.production * STILL_MODIFIER) {
+            moves.insert({ { b, a }, STILL });
+          }
+          else if ( !moved ) {
+            moves.insert({ { b, a }, (unsigned char)(rand() % 5) });
+          }
+        }
       }
     }
 
@@ -192,12 +200,17 @@ void resetClusters(unsigned int** clustering, unsigned int width, unsigned int h
 }
 
 int wrap(int l, int size) {
+  size = size - 1;
+  int ans;
   if ( l < 0 )
-    return (size + l); // modulus here
-  else if ( l > size )
-    return l - size;
+    ans = size - (size % (l * -1)); // modulus here
+  else if ( l >= size )
+    ans = ((size+1) % l);
   else
-    return l;
+    ans = l;
+
+  // out << "Wrapping: " << l << " to " << ans << endl;
+  return ans;
 }
 
 // void clustering(hlt::GameMap& map, vector<cluster> & clusters) {
