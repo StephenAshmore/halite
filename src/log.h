@@ -1,11 +1,14 @@
 #include <fstream>
+#include <string>
 
 using std::ofstream;
 using std::endl;
+using std::string;
 
-void log(char const* str) {
+void log(string str) {
   static ofstream out;
   if ( !out )
     out.open("log.txt");
-  out << str << endl;
+  out << str;
+  out.flush(); out.flush();
 }

@@ -8,7 +8,7 @@
 
 #include "hlt.hpp"
 #include "networking.hpp"
-#include "log.h"
+// #include "log.h"
 
 const float STILL_MODIFIER = 7.5;
 
