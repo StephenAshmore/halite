@@ -20,7 +20,7 @@ int main() {
   unsigned char myID;
   hlt::GameMap presentMap;
   getInit(myID, presentMap);
-  sendInit("heline-bot");
+  sendInit("betterRandom-bot");
 
   std::set<hlt::Move> moves;
   bool moved = false;
@@ -34,7 +34,7 @@ int main() {
         hlt::Site& site = presentMap.getSite({ b, a });
         if (site.owner == myID) {
           moved = false;
-          // Check if an adjacent square that is an enemy has less strength
+          // check if an adjacent enemy has less strength, and move there if so.
           for ( int i = 0; i < 4; i++ ) {
             hlt::Site& adj = presentMap.getSite({ b,a }, CARDINALS[i]);
             if ( adj.owner != myID && adj.strength < site.strength ) {
@@ -43,7 +43,6 @@ int main() {
               break;
             }
           }
-
 
           if ( !moved && site.strength < site.production * STILL_MODIFIER) {
             moves.insert({ { b, a }, STILL });
