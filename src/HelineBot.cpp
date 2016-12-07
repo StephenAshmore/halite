@@ -9,6 +9,7 @@
 #include <vector>
 #include <queue>
 #include <string>
+#include <algorithm>
 
 #include "hlt.hpp"
 #include "networking.hpp"
@@ -37,6 +38,9 @@ struct location {
 void clustering(hlt::GameMap& map, vector<cluster> & clusters);
 int wrap(int l, int size);
 void resetClusters(unsigned int** clustering, unsigned int width, unsigned int height);
+bool compareByStrength(const cluster& a, const cluster& b) {
+  return ( a.strength < b.strength)
+}
 
 int main() {
   // Initialization:
@@ -95,6 +99,7 @@ int main() {
     bool stop = false;
     int count = 0;
     unsigned short initY = 0; unsigned short initX = 0;
+    // CLUSTERING:
     while ( !done ) {
       stop = false;
       // find un-clustered cell:
@@ -134,7 +139,7 @@ int main() {
       cluster newCluster;
       newCluster.id = clusterID;
       newCluster.strength = curStr;
-      clusters.push_back(newCluster);
+
 
       // Add neighbors of first originator to m_queue.
       // dequee this guy.
@@ -157,6 +162,7 @@ int main() {
           // if so, add it to the clustering matrix
           // and add neighbors to queue:
           clustering[cur.y][cur.x] = clusterID;
+          newCluster.strength += site.strength;
           neighbor_right.x = wrap(cur.x + 1, map.width);   neighbor_right.y = wrap(cur.y, map.height);
           neighbor_left.x = wrap(cur.x - 1, map.width);    neighbor_left.y = wrap(cur.y, map.height);
           neighbor_above.x = wrap(cur.x, map.width);       neighbor_above.y = wrap(cur.y - 1, map.height);
@@ -167,7 +173,11 @@ int main() {
         }
         m_queue.pop();
       }
+      clusters.push_back(newCluster);
     }
+
+    // sort clusters:
+    
 
 
     for(unsigned short a = 0; a < map.height; a++) {
