@@ -48,7 +48,7 @@ void clustering(hlt::GameMap& map, vector<cluster> & clusters);
 int wrap(int l, int size);
 void resetClusters(unsigned int** clustering, unsigned int width, unsigned int height);
 bool compareByStrength(const cluster& a, const cluster& b) {
-  return ( a.strength < b.strength);
+  return ( a.strengthToSize < b.strengthToSize);
 }
 // bool shouldAttackCluster(const vector<cluster>& clusters, hlt::site& cur, unsigned int **clustering, unsigned int x, unsigned int y);
 
@@ -98,7 +98,7 @@ int main() {
   while(true) {
     std::queue<location> empty;
     std::swap(m_queue,empty);
-    unsigned int clusterID = 0;
+    unsigned int clusterID = 0;-
 
     resetClusters(clustering, map.width, map.height);
     clusters.clear();
@@ -114,7 +114,10 @@ int main() {
     unsigned short minX = 100; unsigned short maxX = 0;
     unsigned short minY = 100; unsigned short maxY = 0;
 
-    //If I find clusters with no wrap around, compute the center points, then cluster again I will have different clusters. What I could attempt to do is a merge. Cluster based on no wrap around, then try to merge the clusters that are on the edges. If they should be merged then I would try to manually calculate the new center points?
+    //If I find clusters with no wrap around, compute the center points, then cluster again I will
+    // have different clusters. What I could attempt to do is a merge. Cluster based on no wrap around,
+    // then try to merge the clusters that are on the edges. If they should be merged then I would try
+    // to manually calculate the new center points
 
     while ( !done ) {
       unsigned int clusterCount = 0;
