@@ -10,6 +10,7 @@
 #include <queue>
 #include <string>
 #include <algorithm>
+#include <iomanip>
 
 #include "hlt.hpp"
 #include "networking.hpp"
@@ -27,6 +28,14 @@ const float STILL_MODIFIER = 7.5;
 struct cluster {
   unsigned int id;
   unsigned int strength;
+  float strengthToSize;
+  unsigned int size;
+  unsigned short int minX;
+  unsigned short int maxX;
+  unsigned short int minY;
+  unsigned short int maxY;
+  unsigned short int centerX;
+  unsigned short int centerY;
 };
 
 struct location {
@@ -39,8 +48,10 @@ void clustering(hlt::GameMap& map, vector<cluster> & clusters);
 int wrap(int l, int size);
 void resetClusters(unsigned int** clustering, unsigned int width, unsigned int height);
 bool compareByStrength(const cluster& a, const cluster& b) {
-  return ( a.strength < b.strength)
+  return ( a.strength < b.strength);
 }
+// bool shouldAttackCluster(const vector<cluster>& clusters, hlt::site& cur, unsigned int **clustering, unsigned int x, unsigned int y);
+
 
 int main() {
   // Initialization:
@@ -88,25 +99,32 @@ int main() {
     std::queue<location> empty;
     std::swap(m_queue,empty);
     unsigned int clusterID = 0;
+
     resetClusters(clustering, map.width, map.height);
+    clusters.clear();
     final_moves.clear();
 
     getFrame(map);
 
     // Find clusters:
-    // clustering(map, clusters);
     bool done = false;
     bool stop = false;
     int count = 0;
     unsigned short initY = 0; unsigned short initX = 0;
-    // CLUSTERING:
+    unsigned short minX = 100; unsigned short maxX = 0;
+    unsigned short minY = 100; unsigned short maxY = 0;
+
+    //If I find clusters with no wrap around, compute the center points, then cluster again I will have different clusters. What I could attempt to do is a merge. Cluster based on no wrap around, then try to merge the clusters that are on the edges. If they should be merged then I would try to manually calculate the new center points?
+
     while ( !done ) {
+      unsigned int clusterCount = 0;
       stop = false;
       // find un-clustered cell:
       // remember where we stopped
       for ( unsigned short y = 0; y < map.height && !stop; y++ ) {
         for ( unsigned short x = 0; x < map.width; x++ ) {
-          if ( clustering[y][x] == 0 ) {
+          hlt::Site& site = map.getSite({x, y});
+          if ( clustering[y][x] == 0 && site.owner != myID ) {
             clusterID++;
             // out << "CLUSTER ID: " << clusterID << endl;
             // add this one to queue.
@@ -116,6 +134,7 @@ int main() {
             initX = x; initY = y;
             m_queue.push(newLoc);
             clustering[y][x] = clusterID;
+            clusterCount++;
             count++;
             stop = true;
             break;
@@ -133,29 +152,38 @@ int main() {
       hlt::Site& site = map.getSite({cur.x,cur.y});
       unsigned int curStr = site.strength;
 
-      // out << "Current Strength is: " << curStr << endl;
-
       // add to clusters:
       cluster newCluster;
       newCluster.id = clusterID;
       newCluster.strength = curStr;
+      if ( cur.x < minX ) minX = cur.x;
+      if ( cur.x > maxX ) maxX = cur.x;
+      if ( cur.y < minY ) minY = cur.y;
+      if ( cur.y > maxY ) maxY = cur.y;
 
-
-      // Add neighbors of first originator to m_queue.
-      // dequee this guy.
+      // Add neighbors of first originator to m_queue
       neighbor_right.x = wrap(cur.x + 1, map.width);   neighbor_right.y = wrap(cur.y, map.height);
       neighbor_left.x = wrap(cur.x - 1, map.width);    neighbor_left.y = wrap(cur.y, map.height);
       neighbor_above.x = wrap(cur.x, map.width);       neighbor_above.y = wrap(cur.y - 1, map.height);
       neighbor_below.x = wrap(cur.x, map.width);       neighbor_below.y = wrap(cur.y + 1, map.height);
-      m_queue.push(neighbor_right); m_queue.push(neighbor_left);
-      m_queue.push(neighbor_above); m_queue.push(neighbor_below);
+
+      if ( cur.x + 1 < map.width )
+        m_queue.push(neighbor_right);
+      if ( cur.x - 1 >= 0 )
+        m_queue.push(neighbor_left);
+      if ( cur.y - 1 >= 0 )
+        m_queue.push(neighbor_above);
+      if ( cur.y + 1 < map.height)
+        m_queue.push(neighbor_below);
+
+      // dequeue this guy.
       m_queue.pop();
 
       while ( !m_queue.empty()) {
         location& cur = m_queue.front();
 
         hlt::Site& site = map.getSite({cur.x, cur.y});
-        if ( clustering[cur.y][cur.x] == 0 &&
+        if ( clustering[cur.y][cur.x] == 0 && site.owner != myID &&
           (site.strength <= curStr + threshold && site.strength >= curStr - threshold ) )
         {
           // out << "Adding " << cur.x << ", " << cur.y << " to the cluster." << endl;
@@ -167,28 +195,111 @@ int main() {
           neighbor_left.x = wrap(cur.x - 1, map.width);    neighbor_left.y = wrap(cur.y, map.height);
           neighbor_above.x = wrap(cur.x, map.width);       neighbor_above.y = wrap(cur.y - 1, map.height);
           neighbor_below.x = wrap(cur.x, map.width);       neighbor_below.y = wrap(cur.y + 1, map.height);
-          m_queue.push(neighbor_right); m_queue.push(neighbor_left);
-          m_queue.push(neighbor_above); m_queue.push(neighbor_below);
+          if ( cur.x + 1 < map.width )
+            m_queue.push(neighbor_right);
+          if ( cur.x - 1 >= 0 )
+            m_queue.push(neighbor_left);
+          if ( cur.y - 1 >= 0 )
+            m_queue.push(neighbor_above);
+          if ( cur.y + 1 < map.height)
+            m_queue.push(neighbor_below);
+
+          if ( cur.x < minX ) minX = cur.x;
+          if ( cur.x > maxX ) maxX = cur.x;
+          if ( cur.y < minY ) minY = cur.y;
+          if ( cur.y > maxY ) maxY = cur.y;
+
+          clusterCount++;
           count++;
         }
         m_queue.pop();
       }
+      newCluster.size = clusterCount;
+      newCluster.strengthToSize = newCluster.strength / clusterCount;
+      newCluster.minX = minX; newCluster.maxX = maxX;
+      newCluster.minY = minY; newCluster.maxY = maxY;
+      newCluster.centerX = maxX - (int)((maxX - minX) * 0.5);
+      newCluster.centerY = maxY - (int)((maxY - minY) * 0.5);
       clusters.push_back(newCluster);
     }
 
     // sort clusters:
-    
+    std::sort(clusters.begin(), clusters.end(), compareByStrength);
+    unsigned short attackID = clusters[0].id;
 
+    // DEBUG CLUSTERS:
+    // for(unsigned short a = 0; a < map.height; a++) {
+    //   for(unsigned short b = 0; b < map.width; b++) {
+    //     out << setw(4) << clustering[a][b];
+    //   }
+    //   out << endl;
+    // }
+    // out << endl;
+    // out.close();
+    // return 0;
 
     for(unsigned short a = 0; a < map.height; a++) {
       for(unsigned short b = 0; b < map.width; b++) {
         hlt::Site& site = map.getSite({ b, a });
         if ( site.owner == myID ) {
-          if ( !moved && site.strength < site.production * STILL_MODIFIER) {
-            moves.insert({ { b, a }, STILL });
+          if ( site.strength < site.production * STILL_MODIFIER) {
+            final_moves.insert({ { b, a }, STILL });
           }
-          else if ( !moved ) {
-            moves.insert({ { b, a }, (unsigned char)(rand() % 5) });
+          else {
+            bool moved = false; // check if we can be greedy
+            for ( int i = 0; i < 4; i++ ) {
+              hlt::Site& adj = map.getSite({ b,a }, CARDINALS[i]);
+              if ( adj.owner != myID && adj.strength < site.strength ) {
+                final_moves.insert({ {b,a }, (unsigned char)CARDINALS[i] });
+                moved = true;
+                break;
+              }
+            }
+
+            if ( !moved ) { // move towards a cluster
+              // If we own the center, change the center!
+              hlt::Site& centre = map.getSite({clusters[0].centerX, clusters[0].centerY});
+              // while ( centre.owner == myID ) {
+                // centre = map.getSite({centre.x, center.y}, EAST);
+              // }
+              bool movedForReal = false;
+              unsigned int i = 0;
+              // This isn't working. What we need to do instead is to move out from the
+              // center of the cluster and take over all of the cluster.
+              if ( clustering[b][a] == clusters[0].id ) {
+                // attack anywhere in the cluster!
+                // super easy way is just random attack:
+                unsigned char min = STILL;
+                for ( int i = 0; i < 4; i++ ) {
+                  hlt::Site& adj = map.getSite({ b,a }, CARDINALS[i]);
+                  if ( adj.owner != myID && adj.strength < site.strength ) {
+                    min = (unsigned char)CARDINALS[i];
+                    movedForReal = true;
+                    break;
+                  }
+                }
+              }
+              if ( movedForReal )
+                final_moves.insert({ { b, a }, min });
+              else if ( clustering[b][a] != clusters[0].id || !movedForReal){
+                if ( clusters[i].centerY < a ) {
+                  final_moves.insert({ { b, a }, NORTH });
+                  movedForReal = true;
+                }
+                else if ( clusters[i].centerY > a ) {
+                  final_moves.insert({ { b, a }, SOUTH });
+                  movedForReal = true;
+                }
+                else if ( clusters[i].centerX < b ) {
+                  final_moves.insert({ { b, a }, WEST });
+                  movedForReal = true;
+                }
+                else if ( clusters[i].centerX > b ) {
+                  final_moves.insert({ { b, a }, EAST });
+                  movedForReal = true;
+                }
+              }
+            }
           }
         }
       }
@@ -200,6 +311,18 @@ int main() {
   out.close();
   return 0;
 }
+
+// bool shouldAttackCluster(const vector<cluster>& clusters, hlt::site& cur, unsigned int **clustering, unsigned int x, unsigned int y) {
+//     unsigned int id = clusters[i].id;
+//     for ( unsigned int y = 0; y < height; y++ ) {
+//       for ( unsigned int x = 0; x < width; x++ ) {
+//         // find the closest thing to this
+//         if ( )
+//       }
+//     }
+//
+//
+// }
 
 void resetClusters(unsigned int** clustering, unsigned int width, unsigned int height) {
   for ( unsigned short y = 0; y < height; y++ ) {
@@ -222,57 +345,3 @@ int wrap(int l, int size) {
   // out << "Wrapping: " << l << " to " << ans << endl;
   return ans;
 }
-
-// void clustering(hlt::GameMap& map, vector<cluster> & clusters) {
-//   bool inCluster = false;
-//   for ( unsigned short y = 0; y < map.height; y++ ) {
-//     for ( unsigned short x = 0; x < map.width; x++ ) {
-//       hlt::Site& site = map.getSite({x,y});
-//       if ( )
-//     }
-//   }
-// }
-// always a square graph
-// void floydWarshall(unsigned int ** dist, unsigned int ** map, const unsigned int size) {
-//   // The Wikipedia article is horrible. Besides mis-representing (in my opinion) the canonical form of the Floyd–Warshall algorithm, it presents a buggy pseudocode.
-//   // It’s much easier (and more direct) not to iterate over indices but over vertices. Furthermore, each predecessor (usually denoted π, not next), needs to point to its, well, predecessor, not the current temporary vertex.
-//   // With that in mind, we can fix their broken pseudocode.
-//
-//   for ( unsigned int i = 0; i < size; i++ ){
-//     for ( unsigned int j = 0; j < size; j++ ) {
-//       dist[i][j] = 0;
-//     }
-//   }
-//
-//   // for each vertex i
-//   //     for each vertex j
-//   //         if w(u,v) = ∞ then
-//   //             next[i][j] ← NIL
-//   //         else
-//   //             next[i][j] ← i
-//
-//
-//                 // for each edge (u,v)
-//                     // dist[u][v] ← w(u,v)  // the weight of the edge (u,v)
-//
-//   for ( unsigned int i = 0; i < size; i++ ) {
-//     for ( unsigned int j = 0; j < size; j++ ) {
-//       if ( ) {
-//
-//       }
-//     }
-//   }
-//
-//
-//   for ( unsigned int k = 0; k < size; k++ ) {
-//     for ( unsigned int i = 0; i < size; i++ ) {
-//       for ( unsigned int j = 0; j < size; j++ ) {
-//         if ( dist[i][k] + dist[k][j] < dist[i][j]) {
-//           dist[i][j] = dist[i][k] + dist[k][j];
-//           next[i][j] = next[k][j];
-//         }
-//       }
-//     }
-//   }
-//
-// }

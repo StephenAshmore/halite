@@ -4,4 +4,4 @@ cd src
 ./runGame.sh
 cd ..
 mv src/*.hlt replays/.
-mv src/*.log logs/.
+# mv src/*.log logs/.
