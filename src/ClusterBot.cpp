@@ -14,15 +14,13 @@
 
 #include "hlt.hpp"
 #include "networking.hpp"
-// #include "log.h"
 
 using namespace std;
 
 ofstream out;
-
 int threshold = 20;
-const float STILL_MODIFIER = 7.5;
-const unsigned int frameMod = 20;
+const float STILL_MODIFIER = 9;
+const unsigned int frameMod = 10;
 
 
 // cluster struct:
@@ -30,6 +28,7 @@ struct cluster {
   unsigned int id;
   unsigned int strength;
   float strengthToSize;
+  float averageStrengthDistanceRatio;
   unsigned int size;
   unsigned short int minX;
   unsigned short int maxX;
@@ -49,10 +48,14 @@ void clustering(hlt::GameMap& map, vector<cluster> & clusters);
 int wrap(int l, int size);
 void resetClusters(unsigned int** clustering, unsigned int width, unsigned int height);
 bool compareByStrength(const cluster& a, const cluster& b) {
-  return ( a.strengthToSize < b.strengthToSize);
+  return ( a.averageStrengthDistanceRatio < b.averageStrengthDistanceRatio);
+}
+float distance(const unsigned short x1, const unsigned short y1, const unsigned short x2, const unsigned short y2) {
+  return sqrt( ( (x1 - x2) * (x1 - x2) ) +
+               ( (y1 - y2) * (y1 - y2) )
+  );
 }
 // bool shouldAttackCluster(const vector<cluster>& clusters, hlt::site& cur, unsigned int **clustering, unsigned int x, unsigned int y);
-
 
 int main() {
   // Initialization:
@@ -67,16 +70,8 @@ int main() {
   getInit(myID, map);
   sendInit("Cluster-bot");
   out << map.width << " " << map.height << endl;
-  /* END INITIALIZATION */
 
-  // All Pairs Shortest Paths Distances Matrix:
   unsigned int size = map.width * map.height;
-  // unsigned int** distances;
-  // distances = new unsigned int*[size];
-  // for ( unsigned int i = 0; i < size; i++ ) {
-  //   distances[i] = new unsigned int[size];
-  // }
-
   std::set<hlt::Move> final_moves;
 
   // log(tempStr.c_str());
@@ -85,6 +80,11 @@ int main() {
   for ( unsigned int i = 0; i < map.height; i++ ) {
     clustering[i] = new unsigned int[map.width];
   }
+
+  // float** distances = new float*[size];
+  // for ( unsigned int i = 0; i < size; i++ ) {
+  //   distances[i] = new float[size];
+  // }
 
   // Cluster list:
   vector<cluster> clusters;
@@ -98,6 +98,8 @@ int main() {
   location neighbor_below;
 
   unsigned int frame = 0;
+
+  /* END INITIALIZATION */
 
   while(true) {
     std::queue<location> empty;
@@ -125,8 +127,6 @@ int main() {
 
     final_moves.clear();
 
-
-
     // Find clusters:
     bool done = false;
     bool stop = false;
@@ -134,6 +134,22 @@ int main() {
     unsigned short initY = 0; unsigned short initX = 0;
     unsigned short minX = 100; unsigned short maxX = 0;
     unsigned short minY = 100; unsigned short maxY = 0;
+    unsigned short own_minX = 100; unsigned short own_maxX = 0;
+    unsigned short own_minY = 100; unsigned short own_maxY = 0;
+
+    // find centre point of owned territory:
+    for ( unsigned short y = 0; y < map.height; y++ ) {
+      for ( unsigned short x = 0; x < map.width; x++ ) {
+        hlt::Site& temp_site = map.getSite({x,y});
+        if ( temp_site.owner == myID ) {
+          if ( x < own_minX ) own_minX = x; if ( x > own_maxX ) own_maxX = x;
+          if ( x < own_minY ) own_minY = y; if ( x > own_maxY ) own_maxY = y;
+        }
+      }
+    }
+
+    unsigned short ownedCenterX = own_maxX - (unsigned short)((own_maxX - own_minX) * 0.5);
+    unsigned short ownedCenterY = own_maxY - (unsigned short)((own_maxY - own_minY) * 0.5);
 
     // If I find clusters with no wrap around, compute the center points, then cluster again I will
     // have different clusters. What I could attempt to do is a merge. Cluster based on no wrap around,
@@ -240,10 +256,17 @@ int main() {
         }
         newCluster.size = clusterCount;
         newCluster.strengthToSize = newCluster.strength / clusterCount;
+
         newCluster.minX = minX; newCluster.maxX = maxX;
         newCluster.minY = minY; newCluster.maxY = maxY;
         newCluster.centerX = maxX - (int)((maxX - minX) * 0.5);
         newCluster.centerY = maxY - (int)((maxY - minY) * 0.5);
+
+        float dist = distance(newCluster.centerX, newCluster.centerY,
+                                  ownedCenterX, ownedCenterY);
+
+        newCluster.averageStrengthDistanceRatio = newCluster.strengthToSize * dist;
+
         clusters.push_back(newCluster);
       }
 
@@ -282,30 +305,36 @@ int main() {
 
             if ( !moved ) { // move towards a cluster
               hlt::Site& centre = map.getSite({clusters[0].centerX, clusters[0].centerY});
+              int clusterIndex = 0;
+              while (centre.owner == myID) {
+                clusterIndex++;
+                centre = map.getSite({clusters[clusterIndex].centerX, clusters[clusterIndex].centerY});
 
-              bool movedForReal = false;
+                if ( clusterIndex >= clusters.size() ) {
+                  break;
+                }
+              }
+
+
               // This isn't working. What we need to do instead is to move out from the
               // center of the cluster and take over all of the cluster.
-              if ( clustering[b][a] == clusters[0].id ) {
+              if ( clustering[b][a] == clusters[clusterIndex].id ) {
                 final_moves.insert({ { b,a }, (unsigned char)(rand() % 4)} );
               }
-              else if ( clustering[b][a] != clusters[0].id || !movedForReal){
-                if ( clusters[0].centerY < a ) {
-                  final_moves.insert({ { b, a }, NORTH });
-                  movedForReal = true;
-                }
-                else if ( clusters[0].centerY > a ) {
-                  final_moves.insert({ { b, a }, SOUTH });
-                  movedForReal = true;
-                }
-                else if ( clusters[0].centerX < b ) {
-                  final_moves.insert({ { b, a }, WEST });
-                  movedForReal = true;
-                }
-                else if ( clusters[0].centerX > b ) {
-                  final_moves.insert({ { b, a }, EAST });
-                  movedForReal = true;
-                }
+              else if ( clusters[clusterIndex].centerY < a ) {
+                final_moves.insert({ { b, a }, NORTH });
+              }
+              else if ( clusters[clusterIndex].centerY > a ) {
+                final_moves.insert({ { b, a }, SOUTH });
+              }
+              else if ( clusters[clusterIndex].centerX < b ) {
+                final_moves.insert({ { b, a }, WEST });
+              }
+              else if ( clusters[clusterIndex].centerX > b ) {
+                final_moves.insert({ { b, a }, EAST });
+              }
+              else {
+                final_moves.insert({ {b,a}, STILL});
               }
             }
           }
